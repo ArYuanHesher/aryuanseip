@@ -54,7 +54,7 @@ type SoLine = {
 }
 
 type SearchResult = {
-  type: 'SO' | 'MO' | 'PO' | 'PR'
+  type: 'SO' | 'SO_MO' | 'MO' | 'PO' | 'PR'
   rows: (PjRecord | MoLine | SoLine)[]
 }
 
@@ -106,7 +106,14 @@ export default function DashboardPage() {
       ])
 
       if (soRes.data?.length) found.push({ type: 'SO', rows: soRes.data as SoLine[] })
-      if (moRes.data?.length) found.push({ type: 'MO', rows: moRes.data as MoLine[] })
+      if (moRes.data?.length) {
+        const moData = moRes.data as MoLine[]
+        // project_id 以 SO 開頭者屬於銷售訂單，其餘才是製令
+        const soFromMo = moData.filter(r => /^SO/i.test(r.project_id))
+        const realMo = moData.filter(r => !/^SO/i.test(r.project_id))
+        if (soFromMo.length) found.push({ type: 'SO_MO', rows: soFromMo })
+        if (realMo.length) found.push({ type: 'MO', rows: realMo })
+      }
       if (pjRes.data?.length) {
         const poRows = (pjRes.data as PjRecord[]).filter(r => r.doc_type === '採購單號')
         const prRows = (pjRes.data as PjRecord[]).filter(r => r.doc_type === '請購單號')
@@ -209,13 +216,37 @@ export default function DashboardPage() {
         {results.map(r => (
           <div key={r.type} className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
             <h3 className="text-white font-medium text-sm mb-3">
-              {r.type === 'SO' && '📄 銷售訂單'}
+              {(r.type === 'SO' || r.type === 'SO_MO') && '📄 銷售訂單'}
               {r.type === 'MO' && '🏭 製令'}
               {r.type === 'PO' && '🛒 採購單'}
               {r.type === 'PR' && '📝 請購單'}
               <span className="ml-2 text-gray-500 text-xs font-normal">({r.rows.length} 筆)</span>
             </h3>
             <div className="overflow-x-auto">
+              {r.type === 'SO_MO' && (
+                <table className="w-full text-xs">
+                  <thead><tr className="text-gray-500 border-b border-gray-800">
+                    <th className="text-left py-1.5 pr-4">工單號</th>
+                    <th className="text-left py-1.5 pr-4">序號</th>
+                    <th className="text-left py-1.5 pr-4">料號</th>
+                    <th className="text-right py-1.5 pr-4">數量</th>
+                    <th className="text-left py-1.5 pr-4">來源單</th>
+                    <th className="text-left py-1.5">結束日</th>
+                  </tr></thead>
+                  <tbody>
+                    {(r.rows as MoLine[]).map(row => (
+                      <tr key={row.id} className="border-b border-gray-800/40 hover:bg-gray-800/30">
+                        <td className="py-1.5 pr-4 text-white font-mono">{row.project_id}</td>
+                        <td className="py-1.5 pr-4 text-gray-400">{row.line_no}</td>
+                        <td className="py-1.5 pr-4 text-gray-300">{row.mbp_part}</td>
+                        <td className="py-1.5 pr-4 text-gray-300 text-right">{row.order_qty}</td>
+                        <td className="py-1.5 pr-4 text-gray-400 font-mono">{row.source_order}</td>
+                        <td className="py-1.5 text-gray-400">{row.end_date}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
               {r.type === 'SO' && (
                 <table className="w-full text-xs">
                   <thead><tr className="text-gray-500 border-b border-gray-800">

@@ -100,6 +100,8 @@ export default function DashboardPage() {
         if (key === 'run_mo_match' && Array.isArray(json.result?.results)) {
           const total = (json.result.results as { updated: number }[]).reduce((s: number, r: { updated: number }) => s + (r.updated ?? 0), 0)
           summary = `${json.result.results.length} 天，更新 ${total} 筆`
+        } else if (typeof json.result?.syncedCount === 'number') {
+          summary = `同步 ${json.result.syncedCount} 筆`
         } else if (json.result?.message) {
           summary = json.result.message
         }

@@ -10,6 +10,7 @@ type DailySheet = {
     mo_number?: string | null
     factory?: string
     po_status?: string | null
+    material_prep_status?: string | null
   }[]
 }
 
@@ -209,7 +210,7 @@ export default function DashboardPage() {
     <div className="flex gap-6 min-h-full">
 
       {/* 左側：每日出單表 */}
-      <div className="w-64 shrink-0">
+      <div className="w-72 shrink-0">
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-white text-sm font-medium">每日出單（近 14 天）</h2>
@@ -234,6 +235,7 @@ export default function DashboardPage() {
                 <tr className="text-gray-600 border-b border-gray-800">
                   <th className="text-left pb-1.5 font-medium">日期</th>
                   <th className="text-right pb-1.5 font-medium">製令</th>
+                  <th className="text-right pb-1.5 font-medium">批備</th>
                   <th className="text-right pb-1.5 font-medium">委外</th>
                   <th className="text-right pb-1.5 font-medium">常平</th>
                 </tr>
@@ -243,6 +245,7 @@ export default function DashboardPage() {
                   const rows = Array.isArray(s.rows) ? s.rows : []
                   const total = rows.length
                   const withMo = rows.filter(r => r.mo_number).length
+                  const prepDone = rows.filter(r => r.mo_number && r.material_prep_status).length
                   const oMatched = rows.filter(r => r.factory === 'O' && r.po_status === 'matched').length
                   const oTotal = rows.filter(r => r.factory === 'O').length
                   const cMatched = rows.filter(r => r.factory === 'C' && r.po_status === 'matched').length
@@ -252,6 +255,11 @@ export default function DashboardPage() {
                       <td className="py-1.5 text-gray-300 font-mono">{s.sheet_date.slice(5)}</td>
                       <td className="py-1.5 text-right">
                         <span className={withMo === total ? 'text-green-400' : 'text-yellow-400'}>{withMo}/{total}</span>
+                      </td>
+                      <td className="py-1.5 text-right">
+                        {withMo === 0
+                          ? <span className="text-gray-700">—</span>
+                          : <span className={prepDone === withMo ? 'text-green-400' : 'text-orange-400'}>{prepDone}/{withMo}</span>}
                       </td>
                       <td className="py-1.5 text-right">
                         {oTotal === 0

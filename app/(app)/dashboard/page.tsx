@@ -58,6 +58,17 @@ type SearchResult = {
   rows: (PjRecord | MoLine | SoLine)[]
 }
 
+type ActionKey = 'sync_so' | 'sync_mo' | 'sync_po' | 'sync_pr' | 'run_mo_match'
+type TaskStatus = { loading: boolean; result: string | null; isError: boolean }
+
+const SYNC_ACTIONS: { key: ActionKey; label: string; color: string }[] = [
+  { key: 'sync_mo',      label: '同步製令',        color: 'bg-slate-700 hover:bg-slate-600' },
+  { key: 'sync_so',      label: '同步銷售訂單',     color: 'bg-slate-700 hover:bg-slate-600' },
+  { key: 'sync_po',      label: '同步採購單',        color: 'bg-slate-700 hover:bg-slate-600' },
+  { key: 'sync_pr',      label: '同步請購單',        color: 'bg-slate-700 hover:bg-slate-600' },
+  { key: 'run_mo_match', label: '比對7天出單製令',   color: 'bg-emerald-700 hover:bg-emerald-600' },
+]
+
 export default function DashboardPage() {
   const [sheets, setSheets] = useState<DailySheet[]>([])
   const [sheetsLoading, setSheetsLoading] = useState(true)
@@ -65,8 +76,42 @@ export default function DashboardPage() {
   const [searching, setSearching] = useState(false)
   const [results, setResults] = useState<SearchResult[]>([])
   const [searched, setSearched] = useState(false)
+  const [tasks, setTasks] = useState<Record<ActionKey, TaskStatus>>({
+    sync_so:      { loading: false, result: null, isError: false },
+    sync_mo:      { loading: false, result: null, isError: false },
+    sync_po:      { loading: false, result: null, isError: false },
+    sync_pr:      { loading: false, result: null, isError: false },
+    run_mo_match: { loading: false, result: null, isError: false },
+  })
 
-  useEffect(() => {
+  const runAction = async (key: ActionKey) => {
+    setTasks(prev => ({ ...prev, [key]: { loading: true, result: null, isError: false } }))
+    try {
+      const res = await fetch('/api/company/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: key }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json.success) {
+        setTasks(prev => ({ ...prev, [key]: { loading: false, result: json.error ?? '失敗', isError: true } }))
+      } else {
+        let summary = '完成'
+        if (key === 'run_mo_match' && Array.isArray(json.result?.results)) {
+          const total = (json.result.results as { updated: number }[]).reduce((s: number, r: { updated: number }) => s + (r.updated ?? 0), 0)
+          summary = `${json.result.results.length} 天，更新 ${total} 筆`
+        } else if (json.result?.message) {
+          summary = json.result.message
+        }
+        setTasks(prev => ({ ...prev, [key]: { loading: false, result: summary, isError: false } }))
+      }
+    } catch (e) {
+      setTasks(prev => ({ ...prev, [key]: { loading: false, result: String(e), isError: true } }))
+    }
+  }
+
+  const loadSheets = useCallback(() => {
+    setSheetsLoading(true)
     supabaseCompany
       .from('daily_order_sheets')
       .select('sheet_date, rows')
@@ -77,6 +122,8 @@ export default function DashboardPage() {
         setSheetsLoading(false)
       })
   }, [])
+
+  useEffect(() => { loadSheets() }, [loadSheets])
 
   const handleSearch = useCallback(async () => {
     const q = query.trim()
@@ -136,7 +183,19 @@ export default function DashboardPage() {
       {/* 左側：每日出單表 */}
       <div className="w-64 shrink-0">
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-          <h2 className="text-white text-sm font-medium mb-3">每日出單（近 14 天）</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-white text-sm font-medium">每日出單（近 14 天）</h2>
+            <button
+              onClick={loadSheets}
+              disabled={sheetsLoading}
+              className="text-gray-500 hover:text-gray-300 disabled:opacity-40 transition"
+              title="重新整理"
+            >
+              <svg className={`w-3.5 h-3.5 ${sheetsLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+          </div>
           {sheetsLoading ? (
             <p className="text-gray-500 text-xs">載入中...</p>
           ) : sheets.length === 0 ? (
@@ -182,6 +241,38 @@ export default function DashboardPage() {
               </tbody>
             </table>
           )}
+        </div>
+
+        {/* 同步按鈕 */}
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 mt-3">
+          <h2 className="text-gray-400 text-xs font-medium mb-3 uppercase tracking-wide">🔄 資料同步</h2>
+          <div className="flex flex-col gap-2">
+            {SYNC_ACTIONS.map(a => {
+              const task = tasks[a.key]
+              return (
+                <div key={a.key}>
+                  <button
+                    onClick={() => void runAction(a.key)}
+                    disabled={task.loading}
+                    className={`w-full px-3 py-2 rounded-lg text-white text-xs font-medium transition disabled:opacity-50 text-left flex items-center justify-between ${a.color}`}
+                  >
+                    <span>{a.label}</span>
+                    {task.loading && (
+                      <svg className="animate-spin w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                      </svg>
+                    )}
+                  </button>
+                  {task.result && (
+                    <p className={`text-[10px] mt-0.5 px-1 ${task.isError ? 'text-red-400' : 'text-emerald-400'}`}>
+                      {task.isError ? '❌ ' : '✅ '}{task.result}
+                    </p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </div>
       </div>
 

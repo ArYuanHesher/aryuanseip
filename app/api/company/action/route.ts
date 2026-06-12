@@ -4,7 +4,7 @@ import { cookies } from 'next/headers'
 
 export const dynamic = 'force-dynamic'
 
-const ALLOWED_ACTIONS = ['sync_so', 'sync_mo', 'sync_po', 'sync_pr', 'run_mo_match'] as const
+const ALLOWED_ACTIONS = ['sync_so', 'sync_mo', 'sync_po', 'sync_pr', 'sync_material_prep', 'run_mo_match'] as const
 type AllowedAction = typeof ALLOWED_ACTIONS[number]
 
 const ACTION_LABELS: Record<AllowedAction, string> = {
@@ -12,6 +12,7 @@ const ACTION_LABELS: Record<AllowedAction, string> = {
   sync_mo: '同步製令',
   sync_po: '同步採購單',
   sync_pr: '同步請購單',
+  sync_material_prep: '同步批備料單',
   run_mo_match: '比對7天出單表製令',
 }
 

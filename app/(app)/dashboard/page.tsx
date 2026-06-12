@@ -53,20 +53,34 @@ type SoLine = {
   delivery_date: string | null
 }
 
-type SearchResult = {
-  type: 'SO' | 'SO_MO' | 'MO' | 'PO' | 'PR'
-  rows: (PjRecord | MoLine | SoLine)[]
+type PrepLine = {
+  id: number
+  slip_no: string
+  slip_date: string | null
+  mo_number: string | null
+  fg_part: string | null
+  mo_qty: number | null
+  line_no: number | null
+  mbp_part: string | null
+  notice_qty: number | null
+  remark: string | null
 }
 
-type ActionKey = 'sync_so' | 'sync_mo' | 'sync_po' | 'sync_pr' | 'run_mo_match'
+type SearchResult = {
+  type: 'SO' | 'SO_MO' | 'MO' | 'PO' | 'PR' | 'PREP'
+  rows: (PjRecord | MoLine | SoLine | PrepLine)[]
+}
+
+type ActionKey = 'sync_so' | 'sync_mo' | 'sync_po' | 'sync_pr' | 'sync_material_prep' | 'run_mo_match'
 type TaskStatus = { loading: boolean; result: string | null; isError: boolean }
 
 const SYNC_ACTIONS: { key: ActionKey; label: string; color: string }[] = [
-  { key: 'sync_mo',      label: '同步製令',        color: 'bg-slate-700 hover:bg-slate-600' },
-  { key: 'sync_so',      label: '同步銷售訂單',     color: 'bg-slate-700 hover:bg-slate-600' },
-  { key: 'sync_po',      label: '同步採購單',        color: 'bg-slate-700 hover:bg-slate-600' },
-  { key: 'sync_pr',      label: '同步請購單',        color: 'bg-slate-700 hover:bg-slate-600' },
-  { key: 'run_mo_match', label: '比對7天出單製令',   color: 'bg-emerald-700 hover:bg-emerald-600' },
+  { key: 'sync_mo',            label: '同步製令',        color: 'bg-slate-700 hover:bg-slate-600' },
+  { key: 'sync_so',            label: '同步銷售訂單',     color: 'bg-slate-700 hover:bg-slate-600' },
+  { key: 'sync_po',            label: '同步採購單',        color: 'bg-slate-700 hover:bg-slate-600' },
+  { key: 'sync_pr',            label: '同步請購單',        color: 'bg-slate-700 hover:bg-slate-600' },
+  { key: 'sync_material_prep', label: '同步批備料單',     color: 'bg-slate-700 hover:bg-slate-600' },
+  { key: 'run_mo_match',       label: '比對7天出單製令',   color: 'bg-emerald-700 hover:bg-emerald-600' },
 ]
 
 export default function DashboardPage() {
@@ -81,6 +95,7 @@ export default function DashboardPage() {
     sync_mo:      { loading: false, result: null, isError: false },
     sync_po:      { loading: false, result: null, isError: false },
     sync_pr:      { loading: false, result: null, isError: false },
+    sync_material_prep: { loading: false, result: null, isError: false },
     run_mo_match: { loading: false, result: null, isError: false },
   })
 
@@ -168,6 +183,17 @@ export default function DashboardPage() {
         const prRows = (pjRes.data as PjRecord[]).filter(r => r.doc_type === '請購單號')
         if (poRows.length) found.push({ type: 'PO', rows: poRows })
         if (prRows.length) found.push({ type: 'PR', rows: prRows })
+      }
+
+      // 批備料單（erp_material_prep_lines 僅 service_role，走後端 API）
+      try {
+        const prepRes = await fetch(`/api/company/prep-search?q=${encodeURIComponent(q)}`)
+        const prepJson = await prepRes.json()
+        if (prepRes.ok && Array.isArray(prepJson.rows) && prepJson.rows.length) {
+          found.push({ type: 'PREP', rows: prepJson.rows as PrepLine[] })
+        }
+      } catch {
+        // 批備料單查詢失敗不影響其他結果
       }
 
       setResults(found)
@@ -287,7 +313,7 @@ export default function DashboardPage() {
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && void handleSearch()}
-              placeholder="輸入單號查詢（銷售單 / 採購單 / 請購單 / 製令）..."
+              placeholder="輸入單號查詢（銷售單 / 採購單 / 請購單 / 製令 / 批備料單）..."
               className="flex-1 bg-gray-800 border border-gray-700 text-white rounded-xl px-5 py-4 text-base focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-600"
             />
             <button
@@ -313,6 +339,7 @@ export default function DashboardPage() {
               {r.type === 'MO' && '🏭 製令'}
               {r.type === 'PO' && '🛒 採購單'}
               {r.type === 'PR' && '📝 請購單'}
+              {r.type === 'PREP' && '📦 批備料單'}
               <span className="ml-2 text-gray-500 text-xs font-normal">({r.rows.length} 筆)</span>
             </h3>
             <div className="overflow-x-auto">
@@ -421,6 +448,32 @@ export default function DashboardPage() {
                         </tr>
                       )
                     })}
+                  </tbody>
+                </table>
+              )}
+              {r.type === 'PREP' && (
+                <table className="w-full text-xs">
+                  <thead><tr className="text-gray-500 border-b border-gray-800">
+                    <th className="text-left py-1.5 pr-4">領料單號</th>
+                    <th className="text-left py-1.5 pr-4">日期</th>
+                    <th className="text-left py-1.5 pr-4">製令號</th>
+                    <th className="text-left py-1.5 pr-4">製品貨號</th>
+                    <th className="text-left py-1.5 pr-4">序號</th>
+                    <th className="text-left py-1.5 pr-4">料號</th>
+                    <th className="text-right py-1.5 pr-4">應發數量</th>
+                  </tr></thead>
+                  <tbody>
+                    {(r.rows as PrepLine[]).map(row => (
+                      <tr key={row.id} className="border-b border-gray-800/40 hover:bg-gray-800/30">
+                        <td className="py-1.5 pr-4 text-white font-mono">{row.slip_no}</td>
+                        <td className="py-1.5 pr-4 text-gray-400">{row.slip_date}</td>
+                        <td className="py-1.5 pr-4 text-gray-300 font-mono">{row.mo_number}</td>
+                        <td className="py-1.5 pr-4 text-gray-300">{row.fg_part}</td>
+                        <td className="py-1.5 pr-4 text-gray-400">{row.line_no}</td>
+                        <td className="py-1.5 pr-4 text-gray-300">{row.mbp_part}</td>
+                        <td className="py-1.5 pr-4 text-gray-300 text-right">{row.notice_qty}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               )}
